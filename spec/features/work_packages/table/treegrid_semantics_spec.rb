@@ -255,7 +255,7 @@ RSpec.describe "Work package table treegrid semantics", :js do
     it "exposes levels and expansion and removes collapsed descendants from the accessibility tree" do
       wp_table.visit_query(query)
       wp_table.expect_work_package_listed(parent, child, grandchild, sibling)
-      wp_table.expect_no_row_positions
+      wp_table.expect_row_positions(rowcount: 6, rows: [1, 2, 3, 4, 5, 6])
 
       expect(wp_table.treegrid).to have_selector(:row, "Alpha parent", aria: { level: 1, expanded: true, selected: false })
       expect(wp_table.treegrid).to have_selector(:row, "Bravo child", aria: { level: 2, expanded: true, selected: false })
@@ -276,6 +276,7 @@ RSpec.describe "Work package table treegrid semantics", :js do
       descendants = [child, grandchild].map { |wp| wp_table.treegrid.find(wp_table.row_selector(wp), visible: :hidden) }
       expect(descendants.last).to match_selector(:element, aria: { hidden: true, selected: true }, visible: :hidden)
       descendants.each { |row| expect_excluded_from_accessibility_tree(row) }
+      wp_table.expect_row_positions(rowcount: 6, rows: [1, 2, 3, 6])
       expect_axe_clean_table
 
       within(wp_table.treegrid.find(:row, "Alpha parent", aria: { expanded: false })) do
@@ -304,6 +305,31 @@ RSpec.describe "Work package table treegrid semantics", :js do
       expect(wp_table.treegrid).to have_selector(:row, "Alpha parent", aria: { level: 1, expanded: true }, focused: true)
       expect_exposed_at_level(descendants.first, 2)
       expect_exposed_at_level(descendants.last, 3)
+    end
+  end
+
+  context "in hierarchy mode across pages" do
+    let!(:parent) { create(:work_package, project:, subject: "Zulu parent") }
+    let!(:child) { create(:work_package, project:, parent:, subject: "Alpha child") }
+    let!(:others) { %w[Bravo Charlie Delta].map { |name| create(:work_package, project:, subject: "#{name} other") } }
+    let!(:query) do
+      create(:query, user:, project:, column_names: %w[id subject], show_hierarchies: true,
+                     sort_criteria: [%w[subject asc]])
+    end
+
+    before do
+      allow(Setting).to receive(:per_page_options).and_return "3"
+    end
+
+    it "numbers contextual ancestors once and continues the numbering on the next page" do
+      wp_table.visit_query(query)
+      wp_table.expect_work_package_order(parent, child, *others.take(2))
+      wp_table.expect_row_positions(rowcount: 7, rows: [1, 2, 3, 4, 5, 7])
+
+      within(".op-pagination--pages") { click_on "2", exact: true }
+      wp_table.expect_work_package_order(parent, others.last)
+      wp_table.expect_row_positions(rowcount: 7, rows: [1, 2, 6, 7])
+      expect_axe_clean_table
     end
   end
 
