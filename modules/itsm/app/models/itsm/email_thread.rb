@@ -33,10 +33,10 @@ module ITSM
     belongs_to :mailbox, class_name: "ITSM::Mailbox", inverse_of: :threads, optional: true
     has_many :messages, class_name: "ITSM::EmailMessage", foreign_key: :thread_id, inverse_of: :thread, dependent: :delete_all
 
-    normalizes :requester_email, with: ->(email) { email.strip.downcase }
-    normalizes :recipients, with: ->(recipients) { recipients.map { it.strip.downcase }.compact_blank.uniq }
+    normalizes :requester_email, with: EmailAddress::NORMALIZE
+    normalizes :recipients, with: EmailAddress::NORMALIZE_ALL
 
     validates :work_package, uniqueness: true
-    validates :requester_email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP }
+    validates :requester_email, presence: true, email: { allow_blank: true }
   end
 end

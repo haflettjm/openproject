@@ -40,12 +40,12 @@ module ITSM
 
     self.filter_attributes += %i[password]
 
-    normalizes :email, with: ->(email) { email.strip.downcase }
-    normalizes :aliases, with: ->(aliases) { aliases.map { it.strip.downcase }.compact_blank.uniq }
+    normalizes :email, with: EmailAddress::NORMALIZE
+    normalizes :aliases, with: EmailAddress::NORMALIZE_ALL
     normalizes :imap_username, :smtp_username, with: ->(username) { username.strip }
 
-    validates :email, presence: true, uniqueness: true, format: { with: URI::MailTo::EMAIL_REGEXP }
-    validate :aliases_are_email_addresses
+    validates :email, presence: true, uniqueness: true, email: { allow_blank: true }
+    validates :aliases, email_list: true
     validate :email_is_not_an_alias_of_another_mailbox, if: -> { email.present? }
     validate :aliases_are_not_used_by_other_mailboxes, if: -> { aliases.any? }
     validates :imap_username, presence: true, uniqueness: { scope: :mail_server_id, case_sensitive: false }
@@ -58,10 +58,6 @@ module ITSM
     def smtp_credentials = Credentials.new(username: smtp_username, password: smtp_password)
 
     private
-
-    def aliases_are_email_addresses
-      errors.add(:aliases, :invalid) unless aliases.all? { it.match?(URI::MailTo::EMAIL_REGEXP) }
-    end
 
     def email_is_not_an_alias_of_another_mailbox
       errors.add(:email, :taken) if other_mailboxes.with_any_alias([email]).exists?

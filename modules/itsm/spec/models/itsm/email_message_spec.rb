@@ -45,6 +45,27 @@ RSpec.describe ITSM::EmailMessage do
     it { is_expected.not_to be_valid }
   end
 
+  context "with a sender that is not an email address" do
+    subject(:message) { build(:itsm_email_message, from_address: "not an address at all") }
+
+    it { is_expected.not_to be_valid }
+  end
+
+  context "with addresses in mixed case, surrounding whitespace and duplicates" do
+    subject(:message) do
+      build(:itsm_email_message,
+            from_address: " Jane@Customer.Example ",
+            to_addresses: ["Support@Example.com", "support@example.com"],
+            cc_addresses: [" Boss@Customer.Example", ""])
+    end
+
+    it "normalizes them" do
+      expect(message).to have_attributes(from_address: "jane@customer.example",
+                                         to_addresses: %w[support@example.com],
+                                         cc_addresses: %w[boss@customer.example])
+    end
+  end
+
   context "without a mailbox" do
     let(:mailbox) { nil }
 

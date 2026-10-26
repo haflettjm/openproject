@@ -45,10 +45,13 @@ module ITSM
          },
          validate: true
 
+    normalizes :from_address, with: EmailAddress::NORMALIZE
+    normalizes :to_addresses, :cc_addresses, with: EmailAddress::NORMALIZE_ALL
+
     validates :mailbox, presence: true, on: :create
     validates :thread, presence: true, if: :outbound?
     validates :message_id, presence: true
     validates :message_id, uniqueness: { scope: :mailbox_id }, if: :mailbox_id?
-    validates :from_address, presence: true
+    validates :from_address, presence: true, email: { allow_blank: true }
   end
 end
