@@ -1,0 +1,103 @@
+name: openproject-local
+
+x-app: &app
+  image: openproject/openproject:17.9.4-slim@sha256:ca30b14a7bd55c4ffc249c5f58cf09460e4f4c55e7af69d341bb5be6cbb8b9e9
+  restart: unless-stopped
+  env_file: /home/fivek777/.config/openproject/local.env
+  environment:
+    OPENPROJECT_HOST__NAME: localhost:8088
+    OPENPROJECT_HTTPS: "false"
+    OPENPROJECT_HSTS: "false"
+    OPENPROJECT_DEFAULT__LANGUAGE: en
+    OPENPROJECT_RAILS__CACHE__STORE: memcache
+    OPENPROJECT_CACHE__MEMCACHE__SERVER: cache:11211
+    OPENPROJECT_COLLABORATIVE__EDITING__HOCUSPOCUS__URL: ""
+    OPENPROJECT_SEED_ADMIN_USER_PASSWORD_RESET: "false"
+    OPENPROJECT_SEED__LOCALE: en
+    RAILS_MIN_THREADS: "2"
+    RAILS_MAX_THREADS: "8"
+    WEB_CONCURRENCY: "2"
+  volumes:
+    - assets:/var/openproject/assets
+  depends_on:
+    db:
+      condition: service_healthy
+    cache:
+      condition: service_started
+
+services:
+  db:
+    image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+    restart: unless-stopped
+    env_file: /home/fivek777/.config/openproject/local.env
+    environment:
+      POSTGRES_DB: openproject
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d openproject]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 2g
+  cache:
+    image: memcached:1.6-alpine@sha256:6a089e37cbb8acd75c80c6c0667fe57ec54db68782fb1b3afb1d0eb265e50070
+    restart: unless-stopped
+    command: [memcached, -m, "128"]
+    mem_limit: 256m
+  seeder:
+    <<: *app
+    command: ./docker/prod/seeder
+    restart: on-failure
+    mem_limit: 3g
+  web:
+    <<: *app
+    command: [bundle, exec, ruby, -r, /app/config/environment, -S, puma, -b, "tcp://0.0.0.0:8080", -b, "unix:///run/openproject/puma.sock"]
+    environment:
+      OPENPROJECT_HOST__NAME: localhost:8088
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_HSTS: "false"
+      OPENPROJECT_DEFAULT__LANGUAGE: en
+      OPENPROJECT_RAILS__CACHE__STORE: memcache
+      OPENPROJECT_CACHE__MEMCACHE__SERVER: cache:11211
+      OPENPROJECT_COLLABORATIVE__EDITING__HOCUSPOCUS__URL: ""
+      OPENPROJECT_ENABLE__INTERNAL__ASSETS__SERVER: "true"
+      RAILS_MIN_THREADS: "2"
+      RAILS_MAX_THREADS: "8"
+      WEB_CONCURRENCY: "2"
+      PORT: "8080"
+    volumes:
+      - assets:/var/openproject/assets
+      - /home/fivek777/.local/share/openproject/socket:/run/openproject
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+      seeder:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:8080/health_checks/default]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+    mem_limit: 4g
+  worker:
+    <<: *app
+    command: ./docker/prod/worker
+    depends_on:
+      seeder:
+        condition: service_completed_successfully
+    mem_limit: 3g
+  cron:
+    <<: *app
+    command: ./docker/prod/cron
+    depends_on:
+      seeder:
+        condition: service_completed_successfully
+    mem_limit: 2g
+
+volumes:
+  database:
+  assets:
